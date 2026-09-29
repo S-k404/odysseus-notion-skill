@@ -5,7 +5,8 @@ local model running in Odysseus can search and read your Notion live, on
 demand. Nothing from Notion is saved on disk, and Notion is never modified.
 
 - `notion/notion-search/SKILL.md` — tells the model how and when to use the tool.
-- `mcp_servers/notion_server.py` — the tool itself: `search`, `read`, `query`.
+- `mcp_servers/notion_server.py` — the tool itself: `search`, `read`, `query`, `ping`.
+- `tests/` — offline pytest suite against a fake Notion API (no real token or network needed).
 - `INTEGRATION.md` — how to wire both into an Odysseus checkout.
 - `.env.example` — template for your `NOTION_TOKEN`, with setup steps.
 - `LOG.md` — full build log: design decisions, what went wrong, verification.
@@ -29,13 +30,30 @@ no-op for anyone who hasn't set `NOTION_TOKEN`.
 
 ## Read-only, by design
 
-- The tool's schema exposes only `search`, `read`, and `query` — no write action exists to call.
+- The tool's schema exposes only `search`, `read`, `query`, and `ping` — no write action exists to call.
 - The HTTP layer independently refuses anything except GET, `POST /search`, and `POST /databases/<id>/query`.
-- Responses are cached in memory for 45 seconds and never written to disk.
+- Responses are cached in memory for 45 seconds by default (`NOTION_CACHE_TTL` overrides this) and never written to disk.
 - The token is never included in tool output, including error messages.
+
+## Tests
+
+```bash
+pip install -r tests/requirements.txt
+pytest tests/
+```
+
+30 tests run against an in-memory fake Notion API (`tests/fake_notion.py`) —
+no real token or network access needed. They cover search ranking, page and
+database reads (including comments, nested blocks, and `find`), database
+queries with both filter forms, caching and `fresh=true`, 429 retry and rate
+limiting, the read-only guard, and that the token never appears in any output.
 
 ## Status
 
 Done and verified end to end, including a live chat in the Odysseus browser
 UI where the local model chose the tool unprompted and answered correctly.
 See `LOG.md` for details.
+
+## License
+
+MIT — see `LICENSE`.

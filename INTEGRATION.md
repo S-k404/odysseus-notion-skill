@@ -6,6 +6,18 @@ checkout needs three small edits. None of this is committed to the Odysseus
 repo itself — apply it there by hand (or script it) after cloning this repo
 alongside it.
 
+## 0. (Optional) run the tests first
+
+```bash
+pip install -r tests/requirements.txt
+pytest tests/
+```
+
+These run against a fake Notion API (no real token needed) and check the
+read-only guard, search ranking, reads, queries, caching, retries, and that
+the token never leaks into output. Useful to confirm the copy you're about
+to install actually behaves as documented.
+
 ## 1. Copy the tool
 
 ```bash
@@ -62,7 +74,16 @@ cp .env.example /path/to/Odysseus/.env   # or append the NOTION_TOKEN line by ha
 `.env.example` walks through creating the Notion integration and sharing
 pages with it. `.env` holds a real secret — never commit it.
 
-## 5. Rebuild
+## 5. (Optional) tune rate limit and cache
+
+Two environment variables override the tool's defaults, if needed:
+
+```yaml
+- NOTION_RATE_LIMIT=${NOTION_RATE_LIMIT:-}   # requests/s average; default 2.8
+- NOTION_CACHE_TTL=${NOTION_CACHE_TTL:-}     # seconds; default 45, 0 disables reads from cache
+```
+
+## 6. Rebuild
 
 ```bash
 docker compose up -d --build odysseus

@@ -99,8 +99,51 @@ Ask Odysseus, for example: "Search my Notion for [page title] and summarise it, 
 - Remove the tool: delete `Odysseus/mcp_servers/notion_server.py`, the `"notion"` entry and `_BUILTIN_REQUIRES_ENV` in `src/builtin_mcp.py`, the `NOTION_TOKEN` line in `docker-compose.yml`, then rebuild with `docker compose up -d --build odysseus`.
 - Revoke access entirely: delete the integration at https://www.notion.so/profile/integrations.
 
+## Published as its own repo (2026-09-30)
+
+Packaged standalone (skill + `notion_server.py` + setup docs) into a new
+public repo, https://github.com/S-k404/odysseus-notion-skill, instead of
+committing to the Odysseus repo itself. Before making it public: scanned the
+full git history (not just the working tree) for token patterns, found
+nothing, and enabled GitHub secret scanning + push protection on the repo as
+an ongoing check.
+
+Added since the version described above:
+
+- `ping` action: calls `GET /users/me` to confirm the token works and show
+  which workspace and integration it's connected to, without searching
+  anything. Useful for setup troubleshooting.
+- `read` now also fetches the page's comments (`GET /comments`) and appends
+  them under a `Comments:` heading. Missing the comments capability (403) or
+  a 400/404 just means no comments shown, not a failed read.
+- `NOTION_RATE_LIMIT` and `NOTION_CACHE_TTL` env vars override the request
+  pacing and cache lifetime. Guarded against docker-compose's `${VAR:-}`
+  passthrough setting an empty string (not unset) when unconfigured, which
+  would otherwise crash `float("")` at import time.
+- `tests/`: 34 offline pytest tests against an in-memory fake Notion API
+  (`tests/fake_notion.py`, an `httpx.MockTransport` handler) — no real token
+  or network needed. Covers id parsing, the read-only guard, missing-token
+  handling, search ranking and multi-keyword merging, page reads (properties,
+  nested blocks, comments, `find`, a sub-block Notion refuses), database
+  reads and queries (both filter forms, malformed filter), `ping`, unknown
+  actions, caching and `fresh=true`, 429 retry, rate-limiter pacing, and that
+  the token never appears in any output. Needed `mcp<2` specifically —
+  `pip install mcp` alone pulls 2.x, which renamed the `Server.list_tools()`/
+  `call_tool()` decorator API notion_server.py (and the rest of Odysseus)
+  is built against.
+- `LICENSE` (MIT).
+
 ## Notes
 
-- Nothing was committed to git. The Odysseus repo already had uncommitted changes of the user's own in `builtin_mcp.py` and `docker-compose.yml`.
-- No repo test was added for the new server; the checks above ran outside the repo.
-- The Odysseus source changes live in the Docker image, so an Odysseus update or rebuild from a clean checkout will drop them unless they are committed.
+- Nothing was committed to the Odysseus repo. It already had uncommitted
+  changes of the user's own in `builtin_mcp.py` and `docker-compose.yml`,
+  plus many unrelated in-progress changes across the tree; none of it was
+  touched.
+- The container Odysseus actually runs still has the pre-`ping`/comments
+  version of `notion_server.py` — this repo's copy has since diverged. Copy
+  the updated file over (see `INTEGRATION.md`) and rebuild to pick up the
+  new features live.
+- The Odysseus source changes needed to register the tool (`builtin_mcp.py`,
+  `docker-compose.yml`) live only in the running Docker image and in this
+  repo's `INTEGRATION.md`; an Odysseus update or rebuild from a clean
+  checkout will drop them unless applied again.

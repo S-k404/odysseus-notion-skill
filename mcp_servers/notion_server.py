@@ -2,9 +2,10 @@
 notion_server.py
 
 MCP server giving Odysseus READ-ONLY access to a Notion workspace through the
-Notion API: search, read a page or database, and query a database with an
-optional filter. It never writes to Notion and never writes to disk -- results
-go straight back to the model.
+Notion API: search, read a page or database (with its comments), query a
+database with an optional filter, and ping to verify the token. It never
+writes to Notion and never writes to disk -- results go straight back to
+the model.
 
 Auth: the NOTION_TOKEN environment variable (an internal integration secret).
 Use an integration with only the "Read content" capability; it only sees the
@@ -26,6 +27,8 @@ Speed and efficiency:
 - `read` can return only the lines matching `find`, and output is capped;
 - successful GETs/searches are cached in memory for a short time (never on
   disk). Pass fresh=true to bypass it.
+
+NOTION_RATE_LIMIT and NOTION_CACHE_TTL env vars override the defaults below.
 """
 
 import asyncio
@@ -44,11 +47,21 @@ from mcp.types import Tool, TextContent
 
 server = Server("notion")
 
+def _env_float(name, default):
+    # docker-compose's `${VAR:-}` passthrough sets an empty string, not unset,
+    # when the caller hasn't set VAR -- treat that the same as unset.
+    v = os.environ.get(name, "").strip()
+    try:
+        return float(v) if v else default
+    except ValueError:
+        return default
+
+
 _API_BASE = "https://api.notion.com/v1"
 _NOTION_VERSION = "2022-06-28"
-_RATE = 2.8                 # average requests/s; Notion's documented average is 3
-_BURST = 3                  # requests that may go out back to back
-_CACHE_TTL = 45.0           # seconds
+_RATE = _env_float("NOTION_RATE_LIMIT", 2.8)   # average requests/s; Notion's documented average is 3
+_BURST = 3                                      # requests that may go out back to back
+_CACHE_TTL = _env_float("NOTION_CACHE_TTL", 45.0)  # seconds; 0 disables reading from cache
 _CACHE_MAX = 256
 _MAX_SEARCH_RESULTS = 20
 _MAX_ROWS = 50
@@ -302,6 +315,29 @@ def _safe_children(block_id):
         raise
 
 
+def _fetch_comments(block_id):
+    comments, cursor = [], None
+    while True:
+        params = {"block_id": block_id, "page_size": 100}
+        if cursor:
+            params["start_cursor"] = cursor
+        r = _request("GET", "/comments", params=params)
+        comments += r.get("results", [])
+        if not r.get("has_more") or len(comments) >= 50:
+            return comments
+        cursor = r.get("next_cursor")
+
+
+def _safe_comments(block_id):
+    """Comments need a separate capability; missing/forbidden access just means no comments shown."""
+    try:
+        return _fetch_comments(block_id)
+    except NotionError as e:
+        if e.code in (400, 403, 404):
+            return []
+        raise
+
+
 def _read_tree(root_id):
     """Fetch a block tree level by level, children of one level in parallel."""
     children, total, level = {}, 0, [root_id]
@@ -474,13 +510,15 @@ def _do_read(target, find="", max_chars=_DEFAULT_CHARS):
     nid = _extract_id(target)
     if not nid:
         return "Error: read needs 'id' as a Notion page/database id or URL (use action=search to find one)."
-    # Page metadata and its blocks are fetched at the same time.
+    # Page metadata, its blocks, and its comments are all fetched at the same time.
     f_obj = _TASK_POOL.submit(_fetch_object, nid)
     f_tree = _TASK_POOL.submit(_read_tree, nid)
+    f_comments = _TASK_POOL.submit(_safe_comments, nid)
     obj = f_obj.result()
     header = f"# {_title_of(obj)}\n{obj.get('url', '')}\n{_UNTRUSTED}\n"
     if obj.get("object") == "database":
         f_tree.cancel()
+        f_comments.cancel()
         return _clip(header + "(This is a database.)\n" + _schema_text(obj) + "\n\n" + _rows_text(nid, None, 25), max_chars)
     props = _props_line(obj)
     if props:
@@ -492,7 +530,23 @@ def _do_read(target, find="", max_chars=_DEFAULT_CHARS):
     if find and find.strip():
         lines = _find_lines(lines, find)
         header += f"(showing only lines matching '{find.strip()}': {len(lines)} of {total})\n"
-    return _clip(header + "\n" + ("\n".join(lines) or "(This page has no text content.)"), max_chars)
+    body = "\n".join(lines) or "(This page has no text content.)"
+    comment_lines = [_rich(c.get("rich_text")) for c in f_comments.result()]
+    comment_lines = [c for c in comment_lines if c]
+    if comment_lines:
+        body += "\n\nComments:\n" + "\n".join(f"- {c}" for c in comment_lines)
+    return _clip(header + "\n" + body, max_chars)
+
+
+def _do_ping():
+    me = _request("GET", "/users/me")
+    bot = me.get("bot") or {}
+    workspace = bot.get("workspace_name") or ""
+    lines = [f"Connected as: {me.get('name') or 'unnamed integration'}"]
+    if workspace:
+        lines.append(f"Workspace: {workspace}")
+    lines.append(f"Bot id: {_short(me.get('id', ''))}")
+    return "\n".join(lines)
 
 
 def _do_query(target, flt, limit, max_chars=_DEFAULT_CHARS):
@@ -531,7 +585,9 @@ def _dispatch(arguments):
         return _do_read(target, arguments.get("find", ""), max_chars)
     if action == "query":
         return _do_query(target, arguments.get("filter"), arguments.get("limit", 25), max_chars)
-    return f"Error: Unknown action '{action}'. Use: search, read, query"
+    if action == "ping":
+        return _do_ping()
+    return f"Error: Unknown action '{action}'. Use: search, read, query, ping"
 
 
 @server.list_tools()
@@ -542,17 +598,18 @@ async def list_tools() -> list[Tool]:
             description=(
                 "Search and read the user's Notion workspace, LIVE and READ-ONLY (nothing is written to Notion or "
                 "saved to disk). Actions: 'search' (find pages/databases/rows by TITLE keywords; also tries each "
-                "keyword and ranks by title match; empty query = most recently edited), 'read' (a page's text and "
-                "properties, or a database's columns and rows, by id or Notion URL; add find=<words> to get only the "
-                "matching lines of a long page), 'query' (rows of a database, optional filter). Search matches "
-                "titles only, so read the best hits and follow id= values for sub-pages and inline databases. Only "
-                "pages shared with the integration are visible. Cite the page URL. Results are cached ~45s; pass "
-                "fresh=true right after the user edited something."
+                "keyword and ranks by title match; empty query = most recently edited), 'read' (a page's text, "
+                "properties and comments, or a database's columns and rows, by id or Notion URL; add find=<words> "
+                "to get only the matching lines of a long page), 'query' (rows of a database, optional filter), "
+                "'ping' (verify the token works and show which workspace it's connected to; no query needed). "
+                "Search matches titles only, so read the best hits and follow id= values for sub-pages and inline "
+                "databases. Only pages shared with the integration are visible. Cite the page URL. Results are "
+                "cached briefly; pass fresh=true right after the user edited something."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["search", "read", "query"]},
+                    "action": {"type": "string", "enum": ["search", "read", "query", "ping"]},
                     "query": {"type": "string", "description": "Title keywords (search)"},
                     "kind": {"type": "string", "enum": ["page", "database"], "description": "Limit search to pages or databases"},
                     "id": {"type": "string", "description": "Notion page/database id or URL (read, query)"},
