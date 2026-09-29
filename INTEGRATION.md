@@ -51,14 +51,16 @@ Add one line to the `odysseus` service's `environment:` block:
 
 ## 4. Set the token — `.env`
 
-```
-NOTION_TOKEN=secret_...
+Copy `.env.example` from this repo into your Odysseus checkout as `.env` (or
+append its `NOTION_TOKEN=` line to the `.env` you already have there), then
+fill in your token:
+
+```bash
+cp .env.example /path/to/Odysseus/.env   # or append the NOTION_TOKEN line by hand
 ```
 
-Get this from a Notion internal integration
-(https://www.notion.so/profile/integrations) with "Read content" capability,
-then share the pages/databases you want searchable with that integration
-(page → `...` → Connections). Sub-pages inherit the connection.
+`.env.example` walks through creating the Notion integration and sharing
+pages with it. `.env` holds a real secret — never commit it.
 
 ## 5. Rebuild
 

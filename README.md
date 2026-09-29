@@ -7,7 +7,18 @@ demand. Nothing from Notion is saved on disk, and Notion is never modified.
 - `notion/notion-search/SKILL.md` — tells the model how and when to use the tool.
 - `mcp_servers/notion_server.py` — the tool itself: `search`, `read`, `query`.
 - `INTEGRATION.md` — how to wire both into an Odysseus checkout.
+- `.env.example` — template for your `NOTION_TOKEN`, with setup steps.
 - `LOG.md` — full build log: design decisions, what went wrong, verification.
+
+## Quickstart
+
+1. Create a Notion internal integration with "Read content" only, and share
+   the pages you want searchable with it. Steps are in `.env.example`.
+2. Follow `INTEGRATION.md` to copy `mcp_servers/notion_server.py` into your
+   Odysseus checkout and register it.
+3. Put your token in Odysseus's `.env` (`cp .env.example` as a starting point).
+4. `docker compose up -d --build odysseus`, then ask Odysseus something like
+   "search my Notion for X and summarise it, with the link."
 
 ## Why
 
