@@ -133,16 +133,32 @@ Added since the version described above:
   is built against.
 - `LICENSE` (MIT).
 
+## Deployed the update to the running container (2026-09-30)
+
+Copied the updated `notion_server.py` into the Odysseus checkout, added the
+two new optional passthrough lines to `docker-compose.yml`
+(`NOTION_RATE_LIMIT`, `NOTION_CACHE_TTL`, same `${VAR:-}` pattern as
+`NOTION_TOKEN`), validated with `docker compose config -q`, then
+`docker compose up -d --build odysseus`.
+
+Startup log: `MCP server connected: Built-in: Notion (read-only) (notion) - 1
+tools via stdio`, no errors — confirms `_env_float`'s empty-string guard
+works, since both new vars are unset in `.env` and so arrive as `""` via the
+`${VAR:-}` passthrough.
+
+Live-tested inside the running container against the real workspace (called
+`call_tool` directly, not through a chat): `ping` returned the real workspace
+name and bot id; `search` and `read` still work; no token appeared in any
+output. The page read in this check happened to have no comments of its own,
+so the `Comments:` section didn't render — that's real data, not a bug; the
+comments code path itself is covered by the offline test suite.
+
 ## Notes
 
-- Nothing was committed to the Odysseus repo. It already had uncommitted
-  changes of the user's own in `builtin_mcp.py` and `docker-compose.yml`,
-  plus many unrelated in-progress changes across the tree; none of it was
-  touched.
-- The container Odysseus actually runs still has the pre-`ping`/comments
-  version of `notion_server.py` — this repo's copy has since diverged. Copy
-  the updated file over (see `INTEGRATION.md`) and rebuild to pick up the
-  new features live.
+- Nothing was committed to the Odysseus repo's git history. It already had
+  uncommitted changes of the user's own in `builtin_mcp.py` and
+  `docker-compose.yml` before this project touched them, plus many unrelated
+  in-progress changes across the tree; none of that was touched.
 - The Odysseus source changes needed to register the tool (`builtin_mcp.py`,
   `docker-compose.yml`) live only in the running Docker image and in this
   repo's `INTEGRATION.md`; an Odysseus update or rebuild from a clean
