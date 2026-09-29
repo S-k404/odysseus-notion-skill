@@ -153,6 +153,48 @@ output. The page read in this check happened to have no comments of its own,
 so the `Comments:` section didn't render — that's real data, not a bug; the
 comments code path itself is covered by the offline test suite.
 
+## Real bug: the agent never reached manage_notion for short prompts (2026-09-30)
+
+The user reported the agent "stuck in a loop" in the real browser UI. Log
+investigation (not guesswork — read the actual container logs for the
+session) showed it wasn't calling Notion repeatedly; it never had the tool at
+all. Short prompts like "check notion project HQ" got classified
+`low_signal=True` by Odysseus's intent classifier (no keyword matched a known
+domain), and with a workspace active that short-circuits tool selection to
+file-exploration tools only, skipping real retrieval entirely. The model
+still somehow knew the tool was named `mcp__notion__manage_notion` (from
+earlier session context) and, unable to reach it, looped calling `web_search`
+five times trying to look up how to use it, until the user stopped it.
+
+Odysseus already had a fix for exactly this bug class for other named
+integrations (`#3794`, `api_call`/Home Assistant): a deterministic keyword
+regex seeds the real tool, independent of embedding retrieval. Notion and
+Obsidian never got the same treatment. Patched `src/agent_loop.py` (four
+edits, documented in `TOOL_ROUTING_FIX.md` since the file has a lot of the
+user's own unrelated in-progress changes and isn't shipped whole):
+keyword-detect "notion"/"obsidian" in the intent classifier, seed the real
+tool names in `_DOMAIN_TOOL_MAP`, and preserve them through a separate
+"Terminus" workspace-tools override that would otherwise strip them back out
+for phrasing that also looks like a coding request.
+
+First verification pass was incomplete: confirmed the classifier fix at the
+function level and declared it fixed. The user then asked to check the logs
+again rather than accept that — correctly, since the real logs from an actual
+retry in the browser caught a second bug the classifier-level check missed:
+`_DOMAIN_RULES`, a separate dict keyed by the same domain names but supplying
+prompt text, had no entries for the new domains, so `_domain_rules_for_tools()`
+raised `KeyError: 'notion'` the moment the tool actually got selected — which,
+because the first fix worked, was now guaranteed to happen on every real
+Notion request. Added matching `_DOMAIN_RULES` entries. Re-verified by running
+the real `stream_agent_loop` pipeline end-to-end (not just the classifier
+function) against the real local LLM for the exact previously-crashing
+message: no crash, and the model's own reasoning trace showed it correctly
+choosing `manage_notion`.
+
+None of this was committed to the Odysseus repo (per the user's standing
+instruction); it's documented here and in `TOOL_ROUTING_FIX.md` as a patch
+guide instead.
+
 ## Notes
 
 - Nothing was committed to the Odysseus repo's git history. It already had

@@ -8,6 +8,7 @@ demand. Nothing from Notion is saved on disk, and Notion is never modified.
 - `mcp_servers/notion_server.py` — the tool itself: `search`, `read`, `query`, `ping`.
 - `tests/` — offline pytest suite against a fake Notion API (no real token or network needed).
 - `INTEGRATION.md` — how to wire both into an Odysseus checkout.
+- `TOOL_ROUTING_FIX.md` — an optional Odysseus core patch for a tool-selection bug that can stop the agent from ever reaching `manage_notion` on short prompts.
 - `.env.example` — template for your `NOTION_TOKEN`, with setup steps.
 - `LOG.md` — full build log: design decisions, what went wrong, verification.
 
@@ -42,7 +43,7 @@ pip install -r tests/requirements.txt
 pytest tests/
 ```
 
-30 tests run against an in-memory fake Notion API (`tests/fake_notion.py`) —
+34 tests run against an in-memory fake Notion API (`tests/fake_notion.py`) —
 no real token or network access needed. They cover search ranking, page and
 database reads (including comments, nested blocks, and `find`), database
 queries with both filter forms, caching and `fresh=true`, 429 retry and rate
