@@ -79,6 +79,27 @@ Started and tested in the running container (2026-09-30): first live run passed 
 
 Full chat flow, verified from the container log (2026-09-29 19:10–19:12): asked in the browser UI, "Use the manage_notion tool to search my Notion for '[a page title]', read the best match, and summarise it with the link." The local model (`qwen3.6-35b-a3b`) picked `mcp__notion__manage_notion` on its own, called it three times (search, then reads; all `exit_code=0`), and answered with a correct summary and the real page link. Nothing left untested.
 
+## Git branch (2026-09-30)
+
+The feature is committed on its own branch, separate from main and separate from the user's uncommitted work:
+
+- Branch: `feature/notion-readonly-mcp`, based on `origin/dev`, one commit (`feat(mcp): add read-only Notion built-in MCP server and skill`), commit `2034293e`. PUSHED by the user on 2026-09-30 to their fork: https://github.com/S-k404/odysseus/tree/feature/notion-readonly-mcp (fork created with `gh repo fork pewdiepie-archdaemon/odysseus --clone=false`; remote name `fork`; the remote head matches the local commit). No PR opened yet.
+- Lives in a separate git worktree: `~/Documents/Docker/odysseus-notion-mcp` (the main checkout at `Docker/Odysseus` is untouched).
+- Contents: `mcp_servers/notion_server.py`, `src/builtin_mcp.py` (registration), the three compose files and `.env.example` (NOTION_TOKEN), `integrations/notion/` (README and the skill), `tests/test_notion_server.py` (39 tests, deterministic: httpx.MockTransport and a fake clock).
+- Checks run in the worktree: 39 new tests pass, 20 related existing MCP tests pass, py_compile OK, compose files parse, no secrets, personal paths or emoji in the diff.
+- Commit identity: `S-k404 <103100340+S-k404@users.noreply.github.com>` (the checkout's own git identity is a placeholder).
+- Upstream is someone else's repo (`origin` = pewdiepie-archdaemon/odysseus, no push access for this account), so the branch has to be pushed to a fork. CONTRIBUTING.md asks that agent-assisted work open an issue before a PR and that PRs target `dev`.
+
+## GitHub check (2026-09-30)
+
+- The upstream repo's real name is `odysseus-dev/odysseus` (the old `pewdiepie-archdaemon/odysseus` redirects; searches under the old name silently return nothing).
+- Existing issue: **#409 "feat: Notion integration"** (open, labels `enhancement`, `needs-validation`, `provider`, no assignee, no linked PR). Its author planned the same design (an MCP server in `mcp_servers/` calling the Notion API). A commenter reported Notion's hosted MCP OAuth failing in Docker (callback on localhost); a token-based server avoids that. Do not open a duplicate issue; comment on #409 instead. No other Notion issues or PRs exist.
+- Process rules found: PRs go to `dev`; every PR must link an issue (`Part of #409`); the PR template asks whether the app was actually run; CONTRIBUTING asks agent-assisted work to go through an issue first.
+- #6165 (mcp 2.x breaks built-in servers) is already handled on dev: `requirements.txt` has `mcp<2`. The new server uses the same decorator API as the other built-ins and was tested on mcp 1.30.0.
+- The branch is 1 ahead and 0 behind upstream `dev` (9 files). No CI has run on the fork (0 workflow runs); upstream CI would run on a PR.
+- #409 asks for read and modify; the branch is read-only by design, so a PR should say "Part of #409", not "Fixes #409".
+- Nothing has been posted to GitHub upstream by Claude.
+
 ## Using it
 
 Ask Odysseus, for example: "Search my Notion for [page title] and summarise it, with the link." If nothing is found, connect that page to the integration in Notion (page > ... > Connections). Sub-pages inherit the connection.
