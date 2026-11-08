@@ -1,3 +1,12 @@
+<!-- datasheet:banner -->
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/banner-dark.svg">
+    <img src=".github/assets/banner-light.svg" alt="Notion skill for Odysseus: A read-only Notion tool and skill for a local-model agent: search and read your workspace live, with nothing cached to disk." width="100%">
+  </picture>
+</p>
+<!-- /datasheet:banner -->
+
 # Notion skill for Odysseus
 
 A read-only Notion MCP tool and skill for [Odysseus](https://github.com), so a
@@ -11,6 +20,17 @@ demand. Nothing from Notion is saved on disk, and Notion is never modified.
 - `TOOL_ROUTING_FIX.md` — an optional Odysseus core patch for a tool-selection bug that can stop the agent from ever reaching `manage_notion` on short prompts.
 - `.env.example` — template for your `NOTION_TOKEN`, with setup steps.
 - `LOG.md` — full build log: design decisions, what went wrong, verification.
+
+<!-- datasheet:figure -->
+## At a glance
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/diagram-dark.svg">
+    <img src=".github/assets/diagram-light.svg" alt="Block diagram: read-only path from agent to Notion" width="100%">
+  </picture>
+</p>
+<!-- /datasheet:figure -->
 
 ## Quickstart
 
